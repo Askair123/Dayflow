@@ -104,15 +104,6 @@ struct MainView: View {
                 case .settings:
                     SettingsView()
                         .padding(15)
-                case .dashboard:
-                    DashboardView()
-                        .padding(15)
-                case .journal:
-                    JournalView()
-                        .padding(15)
-                case .bug:
-                    BugReportView()
-                        .padding(15)
                 case .timeline:
                     GeometryReader { geo in
                         HStack(alignment: .top, spacing: 0) {
@@ -398,9 +389,6 @@ struct MainView: View {
             let tabName: String
             switch newIcon {
             case .timeline: tabName = "timeline"
-            case .dashboard: tabName = "dashboard"
-            case .journal: tabName = "journal"
-            case .bug: tabName = "bug_report"
             case .settings: tabName = "settings"
             }
 
@@ -753,24 +741,17 @@ private enum TimelineCopyState: Equatable {
 
 enum SidebarIcon: CaseIterable {
     case timeline
-    case dashboard
-    case journal
-    case bug
     case settings
 
     var assetName: String? {
         switch self {
         case .timeline: return "TimelineIcon"
-        case .dashboard: return "DashboardIcon"
-        case .journal: return "JournalIcon"
-        case .bug: return nil
         case .settings: return nil
         }
     }
 
     var systemNameFallback: String? {
         switch self {
-        case .bug: return "exclamationmark.bubble"
         case .settings: return "gearshape"
         default: return nil
         }
