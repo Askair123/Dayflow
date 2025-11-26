@@ -103,6 +103,10 @@ struct SettingsView: View {
     @State private var frameDiffEnabled: Bool = FrameDifferenceConfig.load().enabled
     @State private var frameDiffAlgorithm: FrameDifferenceConfig.Algorithm = FrameDifferenceConfig.load().algorithm
     @State private var frameDiffThreshold: Double = FrameDifferenceConfig.load().threshold
+
+    // Gemini API mode settings
+    @State private var geminiAPIMode: GeminiAPIMode = GeminiAPIMode.load()
+
     @State private var timelapsesLimitIndex: Int = 0
     @State private var showLimitConfirmation = false
     @State private var pendingLimit: PendingLimit?
@@ -468,6 +472,106 @@ struct SettingsView: View {
                         .foregroundColor(.black.opacity(0.5))
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+
+            // Gemini API Mode Card
+            SettingsCard(title: "Gemini API Mode", subtitle: "Choose between speed and cost for AI processing") {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Mode Picker
+                    Picker("API Mode", selection: $geminiAPIMode) {
+                        ForEach(GeminiAPIMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: geminiAPIMode) { newMode in
+                        newMode.save()
+                        AnalyticsService.shared.capture("gemini_api_mode_changed", [
+                            "mode": newMode.rawValue,
+                            "cost_multiplier": newMode.costMultiplier
+                        ])
+                    }
+
+                    // Mode Description
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 12) {
+                            Image(systemName: iconForMode(geminiAPIMode))
+                                .foregroundColor(colorForMode(geminiAPIMode))
+                                .font(.system(size: 16))
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(geminiAPIMode.displayName)
+                                    .font(.custom("Nunito", size: 13))
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.black.opacity(0.75))
+                                Text(geminiAPIMode.description)
+                                    .font(.custom("Nunito", size: 12))
+                                    .foregroundColor(.black.opacity(0.55))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(colorForMode(geminiAPIMode).opacity(0.08))
+                        )
+
+                        // Stats
+                        HStack(spacing: 20) {
+                            StatItem(label: "Processing Time", value: geminiAPIMode.estimatedDelay)
+                            StatItem(label: "Cost", value: costLabel(geminiAPIMode))
+                        }
+                    }
+
+                    // Footer note
+                    Text("Batch mode processes requests in the background at 50% cost. Perfect for non-urgent analysis. Smart mode automatically uses batch during off-hours.")
+                        .font(.custom("Nunito", size: 12))
+                        .foregroundColor(.black.opacity(0.5))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func iconForMode(_ mode: GeminiAPIMode) -> String {
+        switch mode {
+        case .realtime: return "bolt.fill"
+        case .batch: return "hourglass"
+        case .smart: return "brain"
+        }
+    }
+
+    private func colorForMode(_ mode: GeminiAPIMode) -> Color {
+        switch mode {
+        case .realtime: return Color(hex: "FF7506")
+        case .batch: return Color(hex: "34C759")
+        case .smart: return Color(hex: "1D7FFE")
+        }
+    }
+
+    private func costLabel(_ mode: GeminiAPIMode) -> String {
+        let multiplier = mode.costMultiplier
+        if multiplier >= 1.0 {
+            return "$$$"
+        } else if multiplier >= 0.7 {
+            return "$$"
+        } else {
+            return "$"
+        }
+    }
+
+    private struct StatItem: View {
+        let label: String
+        let value: String
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.custom("Nunito", size: 11))
+                    .foregroundColor(.black.opacity(0.45))
+                Text(value)
+                    .font(.custom("Nunito", size: 13))
+                    .fontWeight(.semibold)
+                    .foregroundColor(.black.opacity(0.75))
             }
         }
     }
