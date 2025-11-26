@@ -90,6 +90,9 @@ final class ScreenRecorder: NSObject, SCStreamOutput {
 
     @MainActor
     init(autoStart: Bool = true) {
+        // Initialize frame difference detector with saved config
+        frameDifferenceDetector = FrameDifferenceDetector(config: FrameDifferenceConfig.load())
+
         super.init()
         dbg("init – autoStart = \(autoStart)")
 
@@ -149,6 +152,10 @@ final class ScreenRecorder: NSObject, SCStreamOutput {
     private var tracker: ActiveDisplayTracker!
     private var currentDisplayID: CGDirectDisplayID?
     private var requestedDisplayID: CGDirectDisplayID?
+
+    // Frame difference detection for intelligent recording
+    private var frameDifferenceDetector: FrameDifferenceDetector
+    private var skippedFramesInSegment: Int = 0
 
     /// Transitions to a new state and logs it for debugging
     private func transition(to newState: RecorderState, context: String? = nil) {
@@ -558,13 +565,22 @@ final class ScreenRecorder: NSObject, SCStreamOutput {
         }
 
         // Add breadcrumb for finishing segment
+        let stats = frameDifferenceDetector.getStats()
         let finishBreadcrumb = Breadcrumb(level: .info, category: "recording")
         finishBreadcrumb.message = "Finishing segment (restart: \(restart))"
         finishBreadcrumb.data = [
-            "frames": frames,
+            "frames_recorded": frames,
+            "frames_skipped": skippedFramesInSegment,
+            "skip_rate": String(format: "%.2f", stats.skipRate),
             "file": fileURL?.lastPathComponent ?? "nil"
         ]
         SentryHelper.addBreadcrumb(finishBreadcrumb)
+
+        // Log frame detection stats periodically
+        if frames > 0 {
+            let skipPercent = Double(skippedFramesInSegment) / Double(skippedFramesInSegment + frames) * 100
+            dbg("Segment stats: \(frames) recorded, \(skippedFramesInSegment) skipped (\(String(format: "%.1f", skipPercent))%)")
+        }
 
         // 1. stop the timer that would have closed the file
         timer?.cancel()
@@ -632,16 +648,26 @@ final class ScreenRecorder: NSObject, SCStreamOutput {
 
     private func reset() {
         timer = nil; writer = nil; input = nil; firstPTS = nil; fileURL = nil; frames = 0
+        skippedFramesInSegment = 0  // Reset skipped frame counter for new segment
     }
 
     func stream(_ s: SCStream, didOutputSampleBuffer sb: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen else { return }
         guard CMSampleBufferDataIsReady(sb) else { return }
         guard isComplete(sb) else { return }
+
+        // Frame difference detection - skip redundant frames
         if let pb = CMSampleBufferGetImageBuffer(sb) {
+            // Check if frame should be recorded based on difference from previous frame
+            if !frameDifferenceDetector.shouldRecordFrame(pb) {
+                skippedFramesInSegment += 1
+                return  // Skip this frame - no significant change
+            }
+
             // TEMPORARILY DISABLED to test if this causes corruption
             // overlayClock(on: pb)          // ← inject the clock into this frame
         }
+
         if writer == nil { beginSegment() }
         guard let w = writer, let inp = input else { return }
 
